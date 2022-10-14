@@ -201,7 +201,8 @@ func TestParse(t *testing.T) {
 }
 
 func Example() {
-	req, err := curlreq.NewRequest("curl https://example.com")
+	cmd := "curl https://example.com"
+	req, err := curlreq.NewRequest(cmd)
 	if err != nil {
 		log.Fatal(err)
 	}
