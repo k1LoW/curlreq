@@ -30,8 +30,8 @@ type Parsed struct {
 }
 
 // NewRequest returns *http.Request created by parsing a curl command
-func NewRequest(s string) (*http.Request, error) {
-	p, err := Parse(s)
+func NewRequest(cmd ...string) (*http.Request, error) {
+	p, err := Parse(cmd...)
 	if err != nil {
 		return nil, err
 	}
@@ -39,17 +39,11 @@ func NewRequest(s string) (*http.Request, error) {
 }
 
 // Parse a curl command
-func Parse(s string) (*Parsed, error) {
-	if !strings.HasPrefix(s, "curl ") {
-		return nil, fmt.Errorf("invalid curl command: %s", s)
-	}
-
-	args, err := shellwords.Parse(s)
+func Parse(cmd ...string) (*Parsed, error) {
+	args, err := cmdToArgs(cmd...)
 	if err != nil {
 		return nil, err
 	}
-	args = rewrite(args)
-
 	out := newParsed()
 	state := stateBlank
 
@@ -157,6 +151,24 @@ func newParsed() *Parsed {
 		Method: http.MethodGet,
 		Header: http.Header{},
 	}
+}
+
+func cmdToArgs(cmd ...string) ([]string, error) {
+	var err error
+	if len(cmd) == 1 {
+		cmd, err = shellwords.Parse(cmd[0])
+		if err != nil {
+			return nil, err
+		}
+	}
+	if cmd[0] != "curl" {
+		return nil, fmt.Errorf("invalid curl command: %s", cmd)
+	}
+	if len(cmd) == 1 {
+		return nil, fmt.Errorf("invalid curl command: %s", cmd)
+	}
+
+	return rewrite(cmd[1:]), nil
 }
 
 func rewrite(args []string) []string {
