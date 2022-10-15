@@ -1,5 +1,7 @@
 # curlreq
 
+[![build](https://github.com/k1LoW/curlreq/actions/workflows/ci.yml/badge.svg)](https://github.com/k1LoW/curlreq/actions/workflows/ci.yml) [![Go Reference](https://pkg.go.dev/badge/github.com/k1LoW/curlreq.svg)](https://pkg.go.dev/github.com/k1LoW/curlreq) ![Coverage](https://raw.githubusercontent.com/k1LoW/octocovs/main/badges/k1LoW/curlreq/coverage.svg) ![Code to Test Ratio](https://raw.githubusercontent.com/k1LoW/octocovs/main/badges/k1LoW/curlreq/ratio.svg) ![Test Execution Time](https://raw.githubusercontent.com/k1LoW/octocovs/main/badges/k1LoW/curlreq/time.svg)
+
 `curlreq` creates `*http.Request` from [curl](https://curl.se/) command.
 
 ## Usage
