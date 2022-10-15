@@ -2,6 +2,7 @@ package curlreq
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -131,6 +132,21 @@ func (p *Parsed) Request() (*http.Request, error) {
 	}
 	req.Header = p.Header
 	return req, nil
+}
+
+func (p *Parsed) MarshalJSON() ([]byte, error) {
+	s := struct {
+		URL    string      `json:"url"`
+		Method string      `json:"method"`
+		Header http.Header `json:"header"`
+		Body   string      `json:"body,omitempty"`
+	}{
+		URL:    p.URL.String(),
+		Method: p.Method,
+		Header: p.Header,
+		Body:   p.Body,
+	}
+	return json.Marshal(s)
 }
 
 func newParsed() *Parsed {
