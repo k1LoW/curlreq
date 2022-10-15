@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.3.0](https://github.com/k1LoW/curlreq/compare/v0.2.0...v0.3.0) - 2022-10-15
+- Add badges by @k1LoW in https://github.com/k1LoW/curlreq/pull/5
+- Change function args by @k1LoW in https://github.com/k1LoW/curlreq/pull/7
+
 ## [v0.2.0](https://github.com/k1LoW/curlreq/compare/v0.1.0...v0.2.0) - 2022-10-15
 - Adjust the result of `json.Marshal(*curlreq.Parsed)` by @k1LoW in https://github.com/k1LoW/curlreq/pull/2
 - Add doc by @k1LoW in https://github.com/k1LoW/curlreq/pull/4
