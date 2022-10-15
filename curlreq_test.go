@@ -1,6 +1,7 @@
 package curlreq_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -194,6 +195,44 @@ func TestParse(t *testing.T) {
 				t.Error(err)
 			}
 			if diff := cmp.Diff(got, tt.want, nil); diff != "" {
+				t.Errorf("%s", diff)
+			}
+		})
+	}
+}
+
+func TestMarshalJSON(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{
+			`curl http://example.com`,
+			`{"url":"http://example.com","method":"GET","header":{}}`,
+		},
+		{
+			`curl 'http://google.com/' \
+  -H 'Accept-Encoding: gzip, deflate, sdch' \
+  -H 'Accept-Language: en-US,en;q=0.8,da;q=0.6' \
+  -H 'Upgrade-Insecure-Requests: 1' \
+  -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.110 Safari/537.36' \
+  -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8' \
+  -H 'Connection: keep-alive' \
+  --compressed`,
+			`{"url":"http://google.com/","method":"GET","header":{"Accept":["text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"],"Accept-Encoding":["gzip, deflate, sdch"],"Accept-Language":["en-US,en;q=0.8,da;q=0.6"],"Connection":["keep-alive"],"Upgrade-Insecure-Requests":["1"],"User-Agent":["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.110 Safari/537.36"]}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			p, err := curlreq.Parse(tt.input)
+			if err != nil {
+				t.Error(err)
+			}
+			got, err := json.Marshal(p)
+			if err != nil {
+				t.Error(err)
+			}
+			if diff := cmp.Diff(string(got), tt.want, nil); diff != "" {
 				t.Errorf("%s", diff)
 			}
 		})
