@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.3.1](https://github.com/k1LoW/curlreq/compare/v0.3.0...v0.3.1) - 2022-10-18
+- Use http.NoBody by @k1LoW in https://github.com/k1LoW/curlreq/pull/8
+
 ## [v0.3.0](https://github.com/k1LoW/curlreq/compare/v0.2.0...v0.3.0) - 2022-10-15
 - Add badges by @k1LoW in https://github.com/k1LoW/curlreq/pull/5
 - Change function args by @k1LoW in https://github.com/k1LoW/curlreq/pull/7
