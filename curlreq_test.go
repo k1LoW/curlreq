@@ -201,6 +201,34 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestParseExtra(t *testing.T) {
+	tests := []struct {
+		input string
+		want  *curlreq.Parsed
+	}{
+		{
+			`curl example.com`,
+			&curlreq.Parsed{
+				URL:    nil,
+				Method: http.MethodGet,
+				Header: http.Header{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := curlreq.Parse(tt.input)
+			if err != nil {
+				t.Error(err)
+			}
+			if diff := cmp.Diff(got, tt.want, nil); diff != "" {
+				t.Errorf("%s", diff)
+			}
+			_, _ = got.Request()
+		})
+	}
+}
+
 func TestMarshalJSON(t *testing.T) {
 	tests := []struct {
 		input string
@@ -214,7 +242,7 @@ func TestMarshalJSON(t *testing.T) {
 			`curl 'http://google.com/' \
   -H 'Accept-Encoding: gzip, deflate, sdch' \
   -H 'Accept-Language: en-US,en;q=0.8,da;q=0.6' \
-  -H 'Upgrade-Insecure-Requests: 1' \
+p  -H 'Upgrade-Insecure-Requests: 1' \
   -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.110 Safari/537.36' \
   -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8' \
   -H 'Connection: keep-alive' \
