@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.3.2](https://github.com/k1LoW/curlreq/compare/v0.3.1...v0.3.2) - 2022-10-18
+- Fix URL parsing error handling by @k1LoW in https://github.com/k1LoW/curlreq/pull/10
+
 ## [v0.3.1](https://github.com/k1LoW/curlreq/compare/v0.3.0...v0.3.1) - 2022-10-18
 - Use http.NoBody by @k1LoW in https://github.com/k1LoW/curlreq/pull/8
 
