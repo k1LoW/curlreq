@@ -119,7 +119,7 @@ func Parse(cmd ...string) (*Parsed, error) {
 func (p *Parsed) Request() (*http.Request, error) {
 	var b io.Reader
 	if p.Body == "" {
-		b = nil
+		b = http.NoBody
 	} else {
 		b = strings.NewReader(p.Body)
 	}
