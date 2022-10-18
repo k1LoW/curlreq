@@ -118,6 +118,9 @@ func Parse(cmd ...string) (*Parsed, error) {
 // Request returns *http.Request
 func (p *Parsed) Request() (*http.Request, error) {
 	var b io.Reader
+	if p.URL == nil {
+		return nil, fmt.Errorf("curlreq: invalid URL: %s", p.URL)
+	}
 	if p.Body == "" {
 		b = http.NoBody
 	} else {
