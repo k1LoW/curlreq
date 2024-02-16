@@ -193,5 +193,5 @@ func isURL(u string) bool {
 
 func parseField(a string) (string, string) {
 	i := strings.Index(a, ":")
-	return strings.TrimSpace(a[0:i]), strings.TrimSpace(a[i+2:])
+	return strings.TrimSpace(a[0:i]), strings.TrimSpace(a[i+1:])
 }
