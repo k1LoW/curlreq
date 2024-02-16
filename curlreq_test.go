@@ -187,6 +187,17 @@ func TestParse(t *testing.T) {
 				},
 			},
 		},
+		{
+			`curl -H 'Accept:text/*' --header 'User-Agent:slothy' https://api.sloths.com`,
+			&curlreq.Parsed{
+				URL:    URL(t, "https://api.sloths.com"),
+				Method: http.MethodGet,
+				Header: http.Header{
+					"Accept":     []string{"text/*"},
+					"User-Agent": []string{"slothy"},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
