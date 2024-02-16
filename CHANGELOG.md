@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.3.3](https://github.com/k1LoW/curlreq/compare/v0.3.2...v0.3.3) - 2024-02-16
+- Allow no space after ':' in request headers by @kawabatas in https://github.com/k1LoW/curlreq/pull/12
+
 ## [v0.3.2](https://github.com/k1LoW/curlreq/compare/v0.3.1...v0.3.2) - 2022-10-18
 - Fix URL parsing error handling by @k1LoW in https://github.com/k1LoW/curlreq/pull/10
 
