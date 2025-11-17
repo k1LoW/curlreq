@@ -29,7 +29,7 @@ type Parsed struct {
 	Body   string
 }
 
-// NewRequest returns *http.Request created by parsing a curl command
+// NewRequest returns *http.Request created by parsing a curl command.
 func NewRequest(cmd ...string) (*http.Request, error) {
 	p, err := Parse(cmd...)
 	if err != nil {
@@ -38,7 +38,7 @@ func NewRequest(cmd ...string) (*http.Request, error) {
 	return p.Request()
 }
 
-// Parse a curl command
+// Parse a curl command.
 func Parse(cmd ...string) (*Parsed, error) {
 	args, err := cmdToArgs(cmd...)
 	if err != nil {
@@ -115,7 +115,7 @@ func Parse(cmd ...string) (*Parsed, error) {
 	return out, nil
 }
 
-// Request returns *http.Request
+// Request returns *http.Request.
 func (p *Parsed) Request() (*http.Request, error) {
 	var b io.Reader
 	if p.URL == nil {
