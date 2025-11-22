@@ -792,3 +792,143 @@ func TestParserWithWorkingDirectory(t *testing.T) {
 		}
 	})
 }
+
+func TestParseWithDataUrlEncode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content []byte
+		build   func(path string) string
+		want    *curlreq.Parsed
+	}{
+		{
+			name:    "URL encode simple content",
+			content: nil, // no file needed
+			build: func(path string) string {
+				return `curl --data-urlencode "hello world" https://api.example.com`
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   []byte("hello+world"),
+			},
+		},
+		{
+			name:    "URL encode with = prefix",
+			content: nil,
+			build: func(path string) string {
+				return `curl --data-urlencode "=hello world" https://api.example.com`
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   []byte("=hello+world"),
+			},
+		},
+		{
+			name:    "URL encode with name=content format",
+			content: nil,
+			build: func(path string) string {
+				return `curl --data-urlencode "name=hello world" https://api.example.com`
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   []byte("name=hello+world"),
+			},
+		},
+		{
+			name:    "URL encode special characters",
+			content: nil,
+			build: func(path string) string {
+				return `curl --data-urlencode "key=value&other=data" https://api.example.com`
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   []byte("key=value%26other%3Ddata"),
+			},
+		},
+		{
+			name:    "URL encode file contents with @file",
+			content: []byte("hello world"),
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-urlencode @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   []byte("hello+world"),
+			},
+		},
+		{
+			name:    "URL encode file contents with name@file",
+			content: []byte("hello world"),
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-urlencode name@%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   []byte("name=hello+world"),
+			},
+		},
+		{
+			name:    "URL encode inline format",
+			content: nil,
+			build: func(path string) string {
+				return `curl --data-urlencode="test data" https://api.example.com`
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   []byte("test+data"),
+			},
+		},
+		{
+			name:    "URL encode multiple parameters",
+			content: nil,
+			build: func(path string) string {
+				return `curl --data-urlencode "name=John Doe" --data-urlencode "city=New York" https://api.example.com`
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   []byte("name=John+Doe&city=New+York"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var path string
+			if tt.content != nil {
+				dir := t.TempDir()
+				path = filepath.Join(dir, "data.txt")
+				if err := os.WriteFile(path, tt.content, 0o600); err != nil {
+					t.Fatalf("failed to write temp file: %v", err)
+				}
+			}
+
+			got, err := curlreq.Parse(tt.build(path))
+			if err != nil {
+				t.Fatalf("Parse returned error: %v", err)
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

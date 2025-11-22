@@ -84,7 +84,7 @@ func (p *Parser) Parse(cmd ...string) (*Parsed, error) {
 			state = stateUA
 		case a == "-H" || a == "--header":
 			state = stateHeader
-		case a == "-d" || a == "--data" || a == "--data-ascii" || a == "--data-raw" || a == "--data-binary":
+		case a == "-d" || a == "--data" || a == "--data-ascii" || a == "--data-raw" || a == "--data-binary" || a == "--data-urlencode":
 			state = stateData
 		case a == "-u" || a == "--user":
 			state = stateUser
@@ -283,13 +283,17 @@ func expandCurlDataFiles(in []string, wd string) ([]string, error) {
 			continue
 		}
 
+		isUrlEncode := opt == "--data-urlencode"
+
 		if inline {
 			step := 1
-			if content, err := readDataFile(value, wd); err != nil {
+			processed, err := processDataValue(value, wd, isUrlEncode)
+			if err != nil {
 				return nil, err
-			} else if len(content) > 0 {
+			}
+			if processed != "" {
 				args[i] = opt
-				args = slices.Insert(args, i+1, string(content))
+				args = slices.Insert(args, i+1, processed)
 				step = 2
 			}
 			i += step
@@ -300,15 +304,69 @@ func expandCurlDataFiles(in []string, wd string) ([]string, error) {
 			break
 		}
 
-		if content, err := readDataFile(args[i+1], wd); err != nil {
+		processed, err := processDataValue(args[i+1], wd, isUrlEncode)
+		if err != nil {
 			return nil, err
-		} else if len(content) > 0 {
-			args[i+1] = string(content)
+		}
+		if processed != "" {
+			args[i+1] = processed
 		}
 		i += 2
 	}
 
 	return args, nil
+}
+
+// processDataValue processes data value for both @file expansion and URL encoding.
+func processDataValue(value string, wd string, urlEncode bool) (string, error) {
+	var result string
+
+	// Check for name@file format (only for --data-urlencode)
+	if urlEncode {
+		if idx := strings.Index(value, "@"); idx > 0 && !strings.Contains(value[:idx], "=") {
+			// Format: name@file
+			name := value[:idx]
+			filePath := value[idx+1:]
+			content, err := readDataFile("@"+filePath, wd)
+			if err != nil {
+				return "", err
+			}
+			if len(content) > 0 {
+				result = name + "=" + string(content)
+			} else {
+				result = value
+			}
+		} else {
+			// Normal @file or regular data
+			content, err := readDataFile(value, wd)
+			if err != nil {
+				return "", err
+			}
+			if len(content) > 0 {
+				result = string(content)
+			} else {
+				result = value
+			}
+		}
+
+		// Apply URL encoding
+		if result != "" {
+			result = urlEncodeData(result)
+		}
+	} else {
+		// Non-urlencode mode: just expand @file
+		content, err := readDataFile(value, wd)
+		if err != nil {
+			return "", err
+		}
+		if len(content) > 0 {
+			result = string(content)
+		} else {
+			result = value
+		}
+	}
+
+	return result, nil
 }
 
 // readDataFile reads the content of a file if the value starts with @, returns nil otherwise.
@@ -335,6 +393,30 @@ func readDataFile(value string, wd string) ([]byte, error) {
 	return b, nil
 }
 
+// urlEncodeData applies URL encoding to data according to curl's --data-urlencode behavior.
+// Supported formats:
+// - "content" -> URL encode entire content
+// - "=content" -> URL encode content, prepend "="
+// - "name=content" -> Keep "name=", URL encode only content part
+// - "@file" -> URL encode file contents
+// - "name@file" -> Keep "name=", URL encode file contents.
+func urlEncodeData(data string) string {
+	// Format: =content
+	if strings.HasPrefix(data, "=") {
+		return "=" + url.QueryEscape(data[1:])
+	}
+
+	// Format: name=content or name@file (already processed by readDataFile)
+	if idx := strings.Index(data, "="); idx != -1 {
+		name := data[:idx]
+		content := data[idx+1:]
+		return name + "=" + url.QueryEscape(content)
+	}
+
+	// Format: content (no = or @)
+	return url.QueryEscape(data)
+}
+
 func parseCurlDataArg(arg string) (option, value string, inline, ok bool) {
 	switch {
 	case arg == "--data-binary":
@@ -345,6 +427,10 @@ func parseCurlDataArg(arg string) (option, value string, inline, ok bool) {
 		return "--data-ascii", "", false, true
 	case strings.HasPrefix(arg, "--data-ascii="):
 		return "--data-ascii", arg[len("--data-ascii="):], true, true
+	case arg == "--data-urlencode":
+		return "--data-urlencode", "", false, true
+	case strings.HasPrefix(arg, "--data-urlencode="):
+		return "--data-urlencode", arg[len("--data-urlencode="):], true, true
 	case arg == "--data":
 		return "--data", "", false, true
 	case strings.HasPrefix(arg, "--data="):
