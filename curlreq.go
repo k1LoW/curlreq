@@ -399,7 +399,7 @@ func readDataFile(value string, wd string) ([]byte, error) {
 // - "=content" -> URL encode content, prepend "="
 // - "name=content" -> Keep "name=", URL encode only content part
 // - "@file" -> URL encode file contents
-// - "name@file" -> Keep "name=", URL encode file contents
+// - "name@file" -> Keep "name=", URL encode file contents.
 func urlEncodeData(data string) string {
 	// Format: =content
 	if strings.HasPrefix(data, "=") {
