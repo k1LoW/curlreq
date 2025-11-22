@@ -82,7 +82,7 @@ func (p *Parser) Parse(cmd ...string) (*Parsed, error) {
 			state = stateUA
 		case a == "-H" || a == "--header":
 			state = stateHeader
-		case a == "-d" || a == "--data" || a == "--data-ascii" || a == "--data-raw":
+		case a == "-d" || a == "--data" || a == "--data-ascii" || a == "--data-raw" || a == "--data-binary":
 			state = stateData
 		case a == "-u" || a == "--user":
 			state = stateUser
