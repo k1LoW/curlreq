@@ -1,11 +1,15 @@
 package curlreq_test
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -276,6 +280,77 @@ p  -H 'Upgrade-Insecure-Requests: 1' \
 			}
 		})
 	}
+
+	t.Run("marshal JSON with valid UTF-8 body", func(t *testing.T) {
+		t.Parallel()
+
+		p := &curlreq.Parsed{
+			URL:    URL(t, "https://api.example.com"),
+			Method: http.MethodPost,
+			Header: http.Header{},
+			Body:   `{"message":"hello"}`,
+		}
+
+		got, err := json.Marshal(p)
+		if err != nil {
+			t.Fatalf("json.Marshal returned error: %v", err)
+		}
+
+		var result map[string]any
+		if err := json.Unmarshal(got, &result); err != nil {
+			t.Fatalf("json.Unmarshal returned error: %v", err)
+		}
+
+		// Valid UTF-8 should use plain encoding
+		if enc, ok := result["body_encoding"]; ok && enc != "plain" {
+			t.Errorf("expected body_encoding to be 'plain', got %v", enc)
+		}
+
+		if body, ok := result["body"]; !ok || body != `{"message":"hello"}` {
+			t.Errorf("expected body to be preserved, got %v", body)
+		}
+	})
+
+	t.Run("marshal JSON with binary body", func(t *testing.T) {
+		t.Parallel()
+
+		// Create binary data with invalid UTF-8
+		binaryData := []byte{0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD}
+		p := &curlreq.Parsed{
+			URL:    URL(t, "https://api.example.com"),
+			Method: http.MethodPost,
+			Header: http.Header{},
+			Body:   string(binaryData),
+		}
+
+		got, err := json.Marshal(p)
+		if err != nil {
+			t.Fatalf("json.Marshal returned error: %v", err)
+		}
+
+		var result map[string]any
+		if err := json.Unmarshal(got, &result); err != nil {
+			t.Fatalf("json.Unmarshal returned error: %v", err)
+		}
+
+		// Binary data should use base64 encoding
+		if enc, ok := result["body_encoding"]; !ok || enc != "base64" {
+			t.Errorf("expected body_encoding to be 'base64', got %v", enc)
+		}
+
+		// Decode base64 and verify it matches original binary data
+		if bodyStr, ok := result["body"].(string); ok {
+			decoded, err := base64.StdEncoding.DecodeString(bodyStr)
+			if err != nil {
+				t.Fatalf("failed to decode base64 body: %v", err)
+			}
+			if diff := cmp.Diff(binaryData, decoded); diff != "" {
+				t.Errorf("binary data not preserved (-want +got):\n%s", diff)
+			}
+		} else {
+			t.Error("body field is not a string")
+		}
+	})
 }
 
 func Example() {
@@ -304,4 +379,416 @@ func URL(t *testing.T, rawURL string) *url.URL {
 		t.Fatal(err)
 	}
 	return u
+}
+
+func TestParseWithDataFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content []byte
+		build   func(path string) string
+		want    *curlreq.Parsed
+	}{
+		{
+			name:    "parse with -d @file",
+			content: []byte(`{"key":"value"}`),
+			build: func(path string) string {
+				return fmt.Sprintf(`curl -d @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `{"key":"value"}`,
+			},
+		},
+		{
+			name:    "parse with --data @file",
+			content: []byte(`foo=bar&baz=qux`),
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `foo=bar&baz=qux`,
+			},
+		},
+		{
+			name:    "parse with --data-binary @file",
+			content: []byte(`binary content here`),
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-binary @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `binary content here`,
+			},
+		},
+		{
+			name:    "parse with inline -d@file",
+			content: []byte(`{"message":"hello"}`),
+			build: func(path string) string {
+				return fmt.Sprintf(`curl -d@%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `{"message":"hello"}`,
+			},
+		},
+		{
+			name:    "parse with --data-ascii @file",
+			content: []byte(`test data`),
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-ascii @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `test data`,
+			},
+		},
+		{
+			name:    "parse with inline --data=@file",
+			content: []byte(`inline content`),
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data=@%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `inline content`,
+			},
+		},
+		{
+			name:    "parse with inline --data-binary=@file",
+			content: []byte(`binary inline`),
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-binary=@%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `binary inline`,
+			},
+		},
+		{
+			name:    "parse with inline --data-ascii=@file",
+			content: []byte(`ascii inline`),
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-ascii=@%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `ascii inline`,
+			},
+		},
+		{
+			name: "parse with binary data containing NUL bytes",
+			content: []byte{
+				0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD, // Binary data with NUL and high bytes
+				0x00, 0x00, // More NUL bytes
+				0x48, 0x65, 0x6C, 0x6C, 0x6F, // "Hello"
+			},
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-binary @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   string([]byte{0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD, 0x00, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F}),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			path := filepath.Join(dir, "data.txt")
+			if err := os.WriteFile(path, tt.content, 0o600); err != nil {
+				t.Fatalf("failed to write temp file: %v", err)
+			}
+
+			got, err := curlreq.Parse(tt.build(path))
+			if err != nil {
+				t.Fatalf("Parse returned error: %v", err)
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+
+	t.Run("missing file returns error", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := curlreq.Parse(`curl -d @does-not-exist https://api.example.com`)
+		if err == nil {
+			t.Fatal("expected error for missing file, got nil")
+		}
+	})
+
+	t.Run("binary data can be converted to http.Request", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		path := filepath.Join(dir, "binary.dat")
+		binaryData := []byte{0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD}
+		if err := os.WriteFile(path, binaryData, 0o600); err != nil {
+			t.Fatalf("failed to write binary file: %v", err)
+		}
+
+		cmd := fmt.Sprintf(`curl --data-binary @%s https://api.example.com`, path)
+		parsed, err := curlreq.Parse(cmd)
+		if err != nil {
+			t.Fatalf("Parse returned error: %v", err)
+		}
+
+		// Convert to http.Request
+		req, err := parsed.Request()
+		if err != nil {
+			t.Fatalf("Request() returned error: %v", err)
+		}
+
+		// Read body and verify binary data is preserved
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
+
+		if diff := cmp.Diff(binaryData, body); diff != "" {
+			t.Errorf("binary data not preserved (-want +got):\n%s", diff)
+		}
+	})
+}
+
+func TestWithWorkingDirectory(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		setupPath func(t *testing.T) string
+		wantErr   bool
+	}{
+		{
+			name: "valid directory",
+			setupPath: func(t *testing.T) string {
+				return t.TempDir()
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty path returns error",
+			setupPath: func(t *testing.T) string {
+				return ""
+			},
+			wantErr: true,
+		},
+		{
+			name: "non-existent path returns error",
+			setupPath: func(t *testing.T) string {
+				return "/does/not/exist/path/for/testing"
+			},
+			wantErr: true,
+		},
+		{
+			name: "file path returns error",
+			setupPath: func(t *testing.T) string {
+				dir := t.TempDir()
+				filePath := filepath.Join(dir, "file.txt")
+				if err := os.WriteFile(filePath, []byte("content"), 0o600); err != nil {
+					t.Fatalf("failed to create test file: %v", err)
+				}
+				return filePath
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := tt.setupPath(t)
+			parser, err := curlreq.NewParser(curlreq.WithWorkingDirectory(path))
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected no error, got: %v", err)
+				}
+				if parser == nil {
+					t.Error("expected parser, got nil")
+				}
+			}
+		})
+	}
+}
+
+func TestParserWithWorkingDirectory(t *testing.T) {
+	t.Parallel()
+
+	t.Run("relative path resolved against working directory", func(t *testing.T) {
+		t.Parallel()
+
+		// Create directory structure:
+		// tempdir/
+		//   subdir/
+		//     data.json
+		dir := t.TempDir()
+		subdir := filepath.Join(dir, "subdir")
+		if err := os.Mkdir(subdir, 0o755); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+
+		dataFile := filepath.Join(subdir, "data.json")
+		content := `{"key":"value"}`
+		if err := os.WriteFile(dataFile, []byte(content), 0o600); err != nil {
+			t.Fatalf("failed to write data file: %v", err)
+		}
+
+		// Parse with working directory set to tempdir
+		parser, err := curlreq.NewParser(curlreq.WithWorkingDirectory(dir))
+		if err != nil {
+			t.Fatalf("failed to create parser: %v", err)
+		}
+
+		// Use relative path from working directory
+		got, err := parser.Parse(`curl -d @subdir/data.json https://api.example.com`)
+		if err != nil {
+			t.Fatalf("Parse returned error: %v", err)
+		}
+
+		want := &curlreq.Parsed{
+			URL:    URL(t, "https://api.example.com"),
+			Method: http.MethodPost,
+			Header: http.Header{},
+			Body:   content,
+		}
+
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Errorf("unexpected result (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("absolute path not affected by working directory", func(t *testing.T) {
+		t.Parallel()
+
+		// Create file with absolute path
+		dir := t.TempDir()
+		dataFile := filepath.Join(dir, "data.json")
+		content := `{"absolute":"path"}`
+		if err := os.WriteFile(dataFile, []byte(content), 0o600); err != nil {
+			t.Fatalf("failed to write data file: %v", err)
+		}
+
+		// Create a different working directory
+		wdDir := t.TempDir()
+		parser, err := curlreq.NewParser(curlreq.WithWorkingDirectory(wdDir))
+		if err != nil {
+			t.Fatalf("failed to create parser: %v", err)
+		}
+
+		// Use absolute path - should work regardless of working directory
+		cmd := fmt.Sprintf(`curl -d @%s https://api.example.com`, dataFile)
+		got, err := parser.Parse(cmd)
+		if err != nil {
+			t.Fatalf("Parse returned error: %v", err)
+		}
+
+		want := &curlreq.Parsed{
+			URL:    URL(t, "https://api.example.com"),
+			Method: http.MethodPost,
+			Header: http.Header{},
+			Body:   content,
+		}
+
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Errorf("unexpected result (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("relative path with default working directory", func(t *testing.T) {
+		t.Parallel()
+
+		// Create file in current directory
+		dir := t.TempDir()
+		dataFile := filepath.Join(dir, "data.json")
+		content := `{"default":"wd"}`
+		if err := os.WriteFile(dataFile, []byte(content), 0o600); err != nil {
+			t.Fatalf("failed to write data file: %v", err)
+		}
+
+		// Parse without specifying working directory (uses ".")
+		parser, err := curlreq.NewParser()
+		if err != nil {
+			t.Fatalf("failed to create parser: %v", err)
+		}
+
+		// Use absolute path since we can't rely on current directory in tests
+		cmd := fmt.Sprintf(`curl -d @%s https://api.example.com`, dataFile)
+		got, err := parser.Parse(cmd)
+		if err != nil {
+			t.Fatalf("Parse returned error: %v", err)
+		}
+
+		if got.Body != content {
+			t.Errorf("expected body %q, got %q", content, got.Body)
+		}
+	})
+
+	t.Run("multiple data files with working directory", func(t *testing.T) {
+		t.Parallel()
+
+		// Create directory with multiple files
+		dir := t.TempDir()
+		file1 := filepath.Join(dir, "file1.txt")
+		file2 := filepath.Join(dir, "file2.txt")
+
+		if err := os.WriteFile(file1, []byte("data1"), 0o600); err != nil {
+			t.Fatalf("failed to write file1: %v", err)
+		}
+		if err := os.WriteFile(file2, []byte("data2"), 0o600); err != nil {
+			t.Fatalf("failed to write file2: %v", err)
+		}
+
+		parser, err := curlreq.NewParser(curlreq.WithWorkingDirectory(dir))
+		if err != nil {
+			t.Fatalf("failed to create parser: %v", err)
+		}
+
+		got, err := parser.Parse(`curl -d @file1.txt -d @file2.txt https://api.example.com`)
+		if err != nil {
+			t.Fatalf("Parse returned error: %v", err)
+		}
+
+		want := &curlreq.Parsed{
+			URL:    URL(t, "https://api.example.com"),
+			Method: http.MethodPost,
+			Header: http.Header{},
+			Body:   "data1&data2",
+		}
+
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Errorf("unexpected result (-want +got):\n%s", diff)
+		}
+	})
 }

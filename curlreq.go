@@ -7,7 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mattn/go-shellwords"
 )
@@ -29,21 +33,41 @@ type Parsed struct {
 	Body   string
 }
 
-// NewRequest returns *http.Request created by parsing a curl command.
-func NewRequest(cmd ...string) (*http.Request, error) {
-	p, err := Parse(cmd...)
-	if err != nil {
-		return nil, err
-	}
-	return p.Request()
+type config struct {
+	wd string
 }
 
-// Parse a curl command.
-func Parse(cmd ...string) (*Parsed, error) {
+type Option func(*config) error
+
+type Parser struct {
+	config *config
+}
+
+func NewParser(opts ...Option) (*Parser, error) {
+	c := &config{
+		wd: ".",
+	}
+	for _, opt := range opts {
+		if err := opt(c); err != nil {
+			return nil, err
+		}
+	}
+	return &Parser{
+		config: c,
+	}, nil
+}
+
+func (p *Parser) Parse(cmd ...string) (*Parsed, error) {
 	args, err := cmdToArgs(cmd...)
 	if err != nil {
 		return nil, err
 	}
+	// Expand @file syntax in data parameters
+	args, err = expandCurlDataFiles(args, p.config.wd)
+	if err != nil {
+		return nil, err
+	}
+
 	out := newParsed()
 	state := stateBlank
 
@@ -59,7 +83,7 @@ func Parse(cmd ...string) (*Parsed, error) {
 			state = stateUA
 		case a == "-H" || a == "--header":
 			state = stateHeader
-		case a == "-d" || a == "--data" || a == "--data-ascii" || a == "--data-raw":
+		case a == "-d" || a == "--data" || a == "--data-ascii" || a == "--data-raw" || a == "--data-binary":
 			state = stateData
 		case a == "-u" || a == "--user":
 			state = stateUser
@@ -115,6 +139,39 @@ func Parse(cmd ...string) (*Parsed, error) {
 	return out, nil
 }
 
+func WithWorkingDirectory(path string) Option {
+	return func(c *config) error {
+		if path == "" {
+			return fmt.Errorf("base path cannot be empty")
+		}
+		if fi, err := os.Stat(path); err != nil {
+			return fmt.Errorf("invalid base path: %w", err)
+		} else if !fi.IsDir() {
+			return fmt.Errorf("base path is not a directory")
+		}
+		c.wd = path
+		return nil
+	}
+}
+
+// NewRequest returns *http.Request created by parsing a curl command.
+func NewRequest(cmd ...string) (*http.Request, error) {
+	p, err := Parse(cmd...)
+	if err != nil {
+		return nil, err
+	}
+	return p.Request()
+}
+
+// Parse a curl command.
+func Parse(cmd ...string) (*Parsed, error) {
+	p, err := NewParser()
+	if err != nil {
+		return nil, err
+	}
+	return p.Parse(cmd...)
+}
+
 // Request returns *http.Request.
 func (p *Parsed) Request() (*http.Request, error) {
 	var b io.Reader
@@ -135,16 +192,33 @@ func (p *Parsed) Request() (*http.Request, error) {
 }
 
 func (p *Parsed) MarshalJSON() ([]byte, error) {
+	// Check if Body contains valid UTF-8
+	bodyEncoding := ""
+	bodyValue := p.Body
+
+	if p.Body != "" {
+		if !utf8.ValidString(p.Body) {
+			// Body contains invalid UTF-8, encode as base64
+			bodyEncoding = "base64"
+			bodyValue = base64.StdEncoding.EncodeToString([]byte(p.Body))
+		} else {
+			// Body contains valid UTF-8
+			bodyEncoding = "plain"
+		}
+	}
+
 	s := struct {
-		URL    string      `json:"url"`
-		Method string      `json:"method"`
-		Header http.Header `json:"header"`
-		Body   string      `json:"body,omitempty"`
+		URL          string      `json:"url"`
+		Method       string      `json:"method"`
+		Header       http.Header `json:"header"`
+		Body         string      `json:"body,omitempty"`
+		BodyEncoding string      `json:"body_encoding,omitempty"`
 	}{
-		URL:    p.URL.String(),
-		Method: p.Method,
-		Header: p.Header,
-		Body:   p.Body,
+		URL:          p.URL.String(),
+		Method:       p.Method,
+		Header:       p.Header,
+		Body:         bodyValue,
+		BodyEncoding: bodyEncoding,
 	}
 	return json.Marshal(s)
 }
@@ -194,4 +268,89 @@ func isURL(u string) bool {
 func parseField(a string) (string, string) {
 	i := strings.Index(a, ":")
 	return strings.TrimSpace(a[0:i]), strings.TrimSpace(a[i+1:])
+}
+
+// expandCurlDataFiles recognizes the @file syntax in data parameters and expands its content.
+func expandCurlDataFiles(in []string, wd string) ([]string, error) {
+	args := slices.Clone(in)
+	for i := 0; i < len(args); {
+		opt, value, inline, ok := parseCurlDataArg(args[i])
+		if !ok {
+			i++
+			continue
+		}
+
+		if inline {
+			step := 1
+			if content, err := readDataFile(value, wd); err != nil {
+				return nil, err
+			} else if content != "" {
+				args[i] = opt
+				args = slices.Insert(args, i+1, content)
+				step = 2
+			}
+			i += step
+			continue
+		}
+
+		if i+1 >= len(args) {
+			break
+		}
+
+		if content, err := readDataFile(args[i+1], wd); err != nil {
+			return nil, err
+		} else if content != "" {
+			args[i+1] = content
+		}
+		i += 2
+	}
+
+	return args, nil
+}
+
+// readDataFile reads the content of a file if the value starts with @, returns empty string otherwise.
+func readDataFile(value string, wd string) (string, error) {
+	if !strings.HasPrefix(value, "@") || len(value) <= 1 {
+		return "", nil
+	}
+	payloadPath := value[1:]
+
+	// Resolve relative path based on working directory
+	var fullPath string
+	if filepath.IsAbs(payloadPath) {
+		// Absolute path
+		fullPath = payloadPath
+	} else {
+		// Relative path - resolve against working directory
+		fullPath = filepath.Join(wd, payloadPath)
+	}
+
+	b, err := os.ReadFile(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read %s: %w", payloadPath, err)
+	}
+	return string(b), nil
+}
+
+func parseCurlDataArg(arg string) (option, value string, inline, ok bool) {
+	switch {
+	case arg == "--data-binary":
+		return "--data-binary", "", false, true
+	case strings.HasPrefix(arg, "--data-binary="):
+		return "--data-binary", arg[len("--data-binary="):], true, true
+	case arg == "--data-ascii":
+		return "--data-ascii", "", false, true
+	case strings.HasPrefix(arg, "--data-ascii="):
+		return "--data-ascii", arg[len("--data-ascii="):], true, true
+	case arg == "--data":
+		return "--data", "", false, true
+	case strings.HasPrefix(arg, "--data="):
+		return "--data", arg[len("--data="):], true, true
+	case arg == "-d":
+		return "-d", "", false, true
+	case strings.HasPrefix(arg, "-d"):
+		return "-d", arg[len("-d"):], true, true
+	default:
+		return "", "", false, false
+	}
 }
