@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -304,4 +306,150 @@ func URL(t *testing.T, rawURL string) *url.URL {
 		t.Fatal(err)
 	}
 	return u
+}
+
+func TestParseWithDataFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+		build   func(path string) string
+		want    *curlreq.Parsed
+	}{
+		{
+			name:    "parse_with_d_at_file",
+			content: `{"key":"value"}`,
+			build: func(path string) string {
+				return fmt.Sprintf(`curl -d @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `{"key":"value"}`,
+			},
+		},
+		{
+			name:    "parse_with_data_at_file",
+			content: `foo=bar&baz=qux`,
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `foo=bar&baz=qux`,
+			},
+		},
+		{
+			name:    "parse_with_data_binary_at_file",
+			content: `binary content here`,
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-binary @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `binary content here`,
+			},
+		},
+		{
+			name:    "parse_with_inline_d_at_file",
+			content: `{"message":"hello"}`,
+			build: func(path string) string {
+				return fmt.Sprintf(`curl -d@%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `{"message":"hello"}`,
+			},
+		},
+		{
+			name:    "parse_with_data_ascii_at_file",
+			content: `test data`,
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-ascii @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `test data`,
+			},
+		},
+		{
+			name:    "parse_with_inline_data_at_file",
+			content: `inline content`,
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data=@%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `inline content`,
+			},
+		},
+		{
+			name:    "parse_with_inline_data_binary_at_file",
+			content: `binary inline`,
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-binary=@%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `binary inline`,
+			},
+		},
+		{
+			name:    "parse_with_inline_data_ascii_at_file",
+			content: `ascii inline`,
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-ascii=@%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   `ascii inline`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			path := filepath.Join(dir, "data.txt")
+			if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
+				t.Fatalf("failed to write temp file: %v", err)
+			}
+
+			got, err := curlreq.Parse(tt.build(path))
+			if err != nil {
+				t.Fatalf("Parse returned error: %v", err)
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+
+	t.Run("missing_file_returns_error", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := curlreq.Parse(`curl -d @does-not-exist https://api.example.com`)
+		if err == nil {
+			t.Fatal("expected error for missing file, got nil")
+		}
+	})
 }

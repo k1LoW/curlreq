@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"slices"
 	"strings"
 
 	"github.com/mattn/go-shellwords"
@@ -44,6 +46,12 @@ func Parse(cmd ...string) (*Parsed, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Expand @file syntax in data parameters
+	args, err = expandCurlDataFiles(args)
+	if err != nil {
+		return nil, err
+	}
+
 	out := newParsed()
 	state := stateBlank
 
@@ -194,4 +202,78 @@ func isURL(u string) bool {
 func parseField(a string) (string, string) {
 	i := strings.Index(a, ":")
 	return strings.TrimSpace(a[0:i]), strings.TrimSpace(a[i+1:])
+}
+
+// expandCurlDataFiles recognizes the @file syntax in data parameters and expands its content.
+func expandCurlDataFiles(in []string) ([]string, error) {
+	args := slices.Clone(in)
+	for i := 0; i < len(args); {
+		opt, value, inline, ok := parseCurlDataArg(args[i])
+		if !ok {
+			i++
+			continue
+		}
+
+		if inline {
+			step := 1
+			if content, err := readDataFile(value); err != nil {
+				return nil, err
+			} else if content != "" {
+				args[i] = opt
+				args = slices.Insert(args, i+1, content)
+				step = 2
+			}
+			i += step
+			continue
+		}
+
+		if i+1 >= len(args) {
+			break
+		}
+
+		if content, err := readDataFile(args[i+1]); err != nil {
+			return nil, err
+		} else if content != "" {
+			args[i+1] = content
+		}
+		i += 2
+	}
+
+	return args, nil
+}
+
+// readDataFile reads the content of a file if the value starts with @, returns empty string otherwise.
+func readDataFile(value string) (string, error) {
+	if !strings.HasPrefix(value, "@") || len(value) <= 1 {
+		return "", nil
+	}
+	payloadPath := value[1:]
+	b, err := os.ReadFile(payloadPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read %s: %w", payloadPath, err)
+	}
+	return string(b), nil
+}
+
+func parseCurlDataArg(arg string) (option, value string, inline, ok bool) {
+	switch {
+	case arg == "--data-binary":
+		return "--data-binary", "", false, true
+	case strings.HasPrefix(arg, "--data-binary="):
+		return "--data-binary", arg[len("--data-binary="):], true, true
+	case arg == "--data-ascii":
+		return "--data-ascii", "", false, true
+	case strings.HasPrefix(arg, "--data-ascii="):
+		return "--data-ascii", arg[len("--data-ascii="):], true, true
+	case arg == "--data":
+		return "--data", "", false, true
+	case strings.HasPrefix(arg, "--data="):
+		return "--data", arg[len("--data="):], true, true
+	case arg == "-d":
+		return "-d", "", false, true
+	case strings.HasPrefix(arg, "-d"):
+		return "-d", arg[len("-d"):], true, true
+	default:
+		return "", "", false, false
+	}
 }
