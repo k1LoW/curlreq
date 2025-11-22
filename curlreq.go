@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -31,23 +32,37 @@ type Parsed struct {
 	Body   string
 }
 
-// NewRequest returns *http.Request created by parsing a curl command.
-func NewRequest(cmd ...string) (*http.Request, error) {
-	p, err := Parse(cmd...)
-	if err != nil {
-		return nil, err
-	}
-	return p.Request()
+type config struct {
+	wd string
 }
 
-// Parse a curl command.
-func Parse(cmd ...string) (*Parsed, error) {
+type Option func(*config) error
+
+type Parser struct {
+	config *config
+}
+
+func NewParser(opts ...Option) (*Parser, error) {
+	c := &config{
+		wd: ".",
+	}
+	for _, opt := range opts {
+		if err := opt(c); err != nil {
+			return nil, err
+		}
+	}
+	return &Parser{
+		config: c,
+	}, nil
+}
+
+func (p *Parser) Parse(cmd ...string) (*Parsed, error) {
 	args, err := cmdToArgs(cmd...)
 	if err != nil {
 		return nil, err
 	}
 	// Expand @file syntax in data parameters
-	args, err = expandCurlDataFiles(args)
+	args, err = expandCurlDataFiles(args, p.config.wd)
 	if err != nil {
 		return nil, err
 	}
@@ -121,6 +136,39 @@ func Parse(cmd ...string) (*Parsed, error) {
 	}
 
 	return out, nil
+}
+
+func WithWorkingDirectory(path string) Option {
+	return func(c *config) error {
+		if path == "" {
+			return fmt.Errorf("base path cannot be empty")
+		}
+		if fi, err := os.Stat(path); err != nil {
+			return fmt.Errorf("invalid base path: %w", err)
+		} else if !fi.IsDir() {
+			return fmt.Errorf("base path is not a directory")
+		}
+		c.wd = path
+		return nil
+	}
+}
+
+// NewRequest returns *http.Request created by parsing a curl command.
+func NewRequest(cmd ...string) (*http.Request, error) {
+	p, err := Parse(cmd...)
+	if err != nil {
+		return nil, err
+	}
+	return p.Request()
+}
+
+// Parse a curl command.
+func Parse(cmd ...string) (*Parsed, error) {
+	p, err := NewParser()
+	if err != nil {
+		return nil, err
+	}
+	return p.Parse(cmd...)
 }
 
 // Request returns *http.Request.
@@ -205,7 +253,7 @@ func parseField(a string) (string, string) {
 }
 
 // expandCurlDataFiles recognizes the @file syntax in data parameters and expands its content.
-func expandCurlDataFiles(in []string) ([]string, error) {
+func expandCurlDataFiles(in []string, wd string) ([]string, error) {
 	args := slices.Clone(in)
 	for i := 0; i < len(args); {
 		opt, value, inline, ok := parseCurlDataArg(args[i])
@@ -216,7 +264,7 @@ func expandCurlDataFiles(in []string) ([]string, error) {
 
 		if inline {
 			step := 1
-			if content, err := readDataFile(value); err != nil {
+			if content, err := readDataFile(value, wd); err != nil {
 				return nil, err
 			} else if content != "" {
 				args[i] = opt
@@ -231,7 +279,7 @@ func expandCurlDataFiles(in []string) ([]string, error) {
 			break
 		}
 
-		if content, err := readDataFile(args[i+1]); err != nil {
+		if content, err := readDataFile(args[i+1], wd); err != nil {
 			return nil, err
 		} else if content != "" {
 			args[i+1] = content
@@ -243,12 +291,23 @@ func expandCurlDataFiles(in []string) ([]string, error) {
 }
 
 // readDataFile reads the content of a file if the value starts with @, returns empty string otherwise.
-func readDataFile(value string) (string, error) {
+func readDataFile(value string, wd string) (string, error) {
 	if !strings.HasPrefix(value, "@") || len(value) <= 1 {
 		return "", nil
 	}
 	payloadPath := value[1:]
-	b, err := os.ReadFile(payloadPath)
+
+	// Resolve relative path based on working directory
+	var fullPath string
+	if filepath.IsAbs(payloadPath) {
+		// Absolute path
+		fullPath = payloadPath
+	} else {
+		// Relative path - resolve against working directory
+		fullPath = filepath.Join(wd, payloadPath)
+	}
+
+	b, err := os.ReadFile(fullPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read %s: %w", payloadPath, err)
 	}
