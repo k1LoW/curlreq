@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mattn/go-shellwords"
 )
@@ -191,16 +192,33 @@ func (p *Parsed) Request() (*http.Request, error) {
 }
 
 func (p *Parsed) MarshalJSON() ([]byte, error) {
+	// Check if Body contains valid UTF-8
+	bodyEncoding := ""
+	bodyValue := p.Body
+
+	if p.Body != "" {
+		if !utf8.ValidString(p.Body) {
+			// Body contains invalid UTF-8, encode as base64
+			bodyEncoding = "base64"
+			bodyValue = base64.StdEncoding.EncodeToString([]byte(p.Body))
+		} else {
+			// Body contains valid UTF-8
+			bodyEncoding = "plain"
+		}
+	}
+
 	s := struct {
-		URL    string      `json:"url"`
-		Method string      `json:"method"`
-		Header http.Header `json:"header"`
-		Body   string      `json:"body,omitempty"`
+		URL          string      `json:"url"`
+		Method       string      `json:"method"`
+		Header       http.Header `json:"header"`
+		Body         string      `json:"body,omitempty"`
+		BodyEncoding string      `json:"body_encoding,omitempty"`
 	}{
-		URL:    p.URL.String(),
-		Method: p.Method,
-		Header: p.Header,
-		Body:   p.Body,
+		URL:          p.URL.String(),
+		Method:       p.Method,
+		Header:       p.Header,
+		Body:         bodyValue,
+		BodyEncoding: bodyEncoding,
 	}
 	return json.Marshal(s)
 }

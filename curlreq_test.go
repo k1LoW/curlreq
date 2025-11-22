@@ -1,8 +1,10 @@
 package curlreq_test
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -278,6 +280,77 @@ p  -H 'Upgrade-Insecure-Requests: 1' \
 			}
 		})
 	}
+
+	t.Run("marshal JSON with valid UTF-8 body", func(t *testing.T) {
+		t.Parallel()
+
+		p := &curlreq.Parsed{
+			URL:    URL(t, "https://api.example.com"),
+			Method: http.MethodPost,
+			Header: http.Header{},
+			Body:   `{"message":"hello"}`,
+		}
+
+		got, err := json.Marshal(p)
+		if err != nil {
+			t.Fatalf("json.Marshal returned error: %v", err)
+		}
+
+		var result map[string]any
+		if err := json.Unmarshal(got, &result); err != nil {
+			t.Fatalf("json.Unmarshal returned error: %v", err)
+		}
+
+		// Valid UTF-8 should use plain encoding
+		if enc, ok := result["body_encoding"]; ok && enc != "plain" {
+			t.Errorf("expected body_encoding to be 'plain', got %v", enc)
+		}
+
+		if body, ok := result["body"]; !ok || body != `{"message":"hello"}` {
+			t.Errorf("expected body to be preserved, got %v", body)
+		}
+	})
+
+	t.Run("marshal JSON with binary body", func(t *testing.T) {
+		t.Parallel()
+
+		// Create binary data with invalid UTF-8
+		binaryData := []byte{0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD}
+		p := &curlreq.Parsed{
+			URL:    URL(t, "https://api.example.com"),
+			Method: http.MethodPost,
+			Header: http.Header{},
+			Body:   string(binaryData),
+		}
+
+		got, err := json.Marshal(p)
+		if err != nil {
+			t.Fatalf("json.Marshal returned error: %v", err)
+		}
+
+		var result map[string]any
+		if err := json.Unmarshal(got, &result); err != nil {
+			t.Fatalf("json.Unmarshal returned error: %v", err)
+		}
+
+		// Binary data should use base64 encoding
+		if enc, ok := result["body_encoding"]; !ok || enc != "base64" {
+			t.Errorf("expected body_encoding to be 'base64', got %v", enc)
+		}
+
+		// Decode base64 and verify it matches original binary data
+		if bodyStr, ok := result["body"].(string); ok {
+			decoded, err := base64.StdEncoding.DecodeString(bodyStr)
+			if err != nil {
+				t.Fatalf("failed to decode base64 body: %v", err)
+			}
+			if diff := cmp.Diff(binaryData, decoded); diff != "" {
+				t.Errorf("binary data not preserved (-want +got):\n%s", diff)
+			}
+		} else {
+			t.Error("body field is not a string")
+		}
+	})
 }
 
 func Example() {
@@ -313,13 +386,13 @@ func TestParseWithDataFile(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		content string
+		content []byte
 		build   func(path string) string
 		want    *curlreq.Parsed
 	}{
 		{
 			name:    "parse with -d @file",
-			content: `{"key":"value"}`,
+			content: []byte(`{"key":"value"}`),
 			build: func(path string) string {
 				return fmt.Sprintf(`curl -d @%s https://api.example.com`, path)
 			},
@@ -332,7 +405,7 @@ func TestParseWithDataFile(t *testing.T) {
 		},
 		{
 			name:    "parse with --data @file",
-			content: `foo=bar&baz=qux`,
+			content: []byte(`foo=bar&baz=qux`),
 			build: func(path string) string {
 				return fmt.Sprintf(`curl --data @%s https://api.example.com`, path)
 			},
@@ -345,7 +418,7 @@ func TestParseWithDataFile(t *testing.T) {
 		},
 		{
 			name:    "parse with --data-binary @file",
-			content: `binary content here`,
+			content: []byte(`binary content here`),
 			build: func(path string) string {
 				return fmt.Sprintf(`curl --data-binary @%s https://api.example.com`, path)
 			},
@@ -358,7 +431,7 @@ func TestParseWithDataFile(t *testing.T) {
 		},
 		{
 			name:    "parse with inline -d@file",
-			content: `{"message":"hello"}`,
+			content: []byte(`{"message":"hello"}`),
 			build: func(path string) string {
 				return fmt.Sprintf(`curl -d@%s https://api.example.com`, path)
 			},
@@ -371,7 +444,7 @@ func TestParseWithDataFile(t *testing.T) {
 		},
 		{
 			name:    "parse with --data-ascii @file",
-			content: `test data`,
+			content: []byte(`test data`),
 			build: func(path string) string {
 				return fmt.Sprintf(`curl --data-ascii @%s https://api.example.com`, path)
 			},
@@ -384,7 +457,7 @@ func TestParseWithDataFile(t *testing.T) {
 		},
 		{
 			name:    "parse with inline --data=@file",
-			content: `inline content`,
+			content: []byte(`inline content`),
 			build: func(path string) string {
 				return fmt.Sprintf(`curl --data=@%s https://api.example.com`, path)
 			},
@@ -397,7 +470,7 @@ func TestParseWithDataFile(t *testing.T) {
 		},
 		{
 			name:    "parse with inline --data-binary=@file",
-			content: `binary inline`,
+			content: []byte(`binary inline`),
 			build: func(path string) string {
 				return fmt.Sprintf(`curl --data-binary=@%s https://api.example.com`, path)
 			},
@@ -410,7 +483,7 @@ func TestParseWithDataFile(t *testing.T) {
 		},
 		{
 			name:    "parse with inline --data-ascii=@file",
-			content: `ascii inline`,
+			content: []byte(`ascii inline`),
 			build: func(path string) string {
 				return fmt.Sprintf(`curl --data-ascii=@%s https://api.example.com`, path)
 			},
@@ -421,6 +494,23 @@ func TestParseWithDataFile(t *testing.T) {
 				Body:   `ascii inline`,
 			},
 		},
+		{
+			name: "parse with binary data containing NUL bytes",
+			content: []byte{
+				0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD, // Binary data with NUL and high bytes
+				0x00, 0x00, // More NUL bytes
+				0x48, 0x65, 0x6C, 0x6C, 0x6F, // "Hello"
+			},
+			build: func(path string) string {
+				return fmt.Sprintf(`curl --data-binary @%s https://api.example.com`, path)
+			},
+			want: &curlreq.Parsed{
+				URL:    URL(t, "https://api.example.com"),
+				Method: http.MethodPost,
+				Header: http.Header{},
+				Body:   string([]byte{0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD, 0x00, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F}),
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -429,7 +519,7 @@ func TestParseWithDataFile(t *testing.T) {
 
 			dir := t.TempDir()
 			path := filepath.Join(dir, "data.txt")
-			if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
+			if err := os.WriteFile(path, tt.content, 0o600); err != nil {
 				t.Fatalf("failed to write temp file: %v", err)
 			}
 
@@ -450,6 +540,39 @@ func TestParseWithDataFile(t *testing.T) {
 		_, err := curlreq.Parse(`curl -d @does-not-exist https://api.example.com`)
 		if err == nil {
 			t.Fatal("expected error for missing file, got nil")
+		}
+	})
+
+	t.Run("binary data can be converted to http.Request", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		path := filepath.Join(dir, "binary.dat")
+		binaryData := []byte{0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD}
+		if err := os.WriteFile(path, binaryData, 0o600); err != nil {
+			t.Fatalf("failed to write binary file: %v", err)
+		}
+
+		cmd := fmt.Sprintf(`curl --data-binary @%s https://api.example.com`, path)
+		parsed, err := curlreq.Parse(cmd)
+		if err != nil {
+			t.Fatalf("Parse returned error: %v", err)
+		}
+
+		// Convert to http.Request
+		req, err := parsed.Request()
+		if err != nil {
+			t.Fatalf("Request() returned error: %v", err)
+		}
+
+		// Read body and verify binary data is preserved
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
+
+		if diff := cmp.Diff(binaryData, body); diff != "" {
+			t.Errorf("binary data not preserved (-want +got):\n%s", diff)
 		}
 	})
 }
