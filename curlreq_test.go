@@ -116,7 +116,7 @@ func TestParse(t *testing.T) {
 				URL:    URL(t, "https://api.sloths.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   "foo=bar",
+				Body:   []byte("foo=bar"),
 			},
 		},
 		{
@@ -125,7 +125,7 @@ func TestParse(t *testing.T) {
 				URL:    URL(t, "https://api.sloths.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   "foo=bar&bar=baz",
+				Body:   []byte("foo=bar&bar=baz"),
 			},
 		},
 		{
@@ -288,7 +288,7 @@ p  -H 'Upgrade-Insecure-Requests: 1' \
 			URL:    URL(t, "https://api.example.com"),
 			Method: http.MethodPost,
 			Header: http.Header{},
-			Body:   `{"message":"hello"}`,
+			Body:   []byte(`{"message":"hello"}`),
 		}
 
 		got, err := json.Marshal(p)
@@ -320,7 +320,7 @@ p  -H 'Upgrade-Insecure-Requests: 1' \
 			URL:    URL(t, "https://api.example.com"),
 			Method: http.MethodPost,
 			Header: http.Header{},
-			Body:   string(binaryData),
+			Body:   binaryData,
 		}
 
 		got, err := json.Marshal(p)
@@ -400,7 +400,7 @@ func TestParseWithDataFile(t *testing.T) {
 				URL:    URL(t, "https://api.example.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   `{"key":"value"}`,
+				Body:   []byte(`{"key":"value"}`),
 			},
 		},
 		{
@@ -413,7 +413,7 @@ func TestParseWithDataFile(t *testing.T) {
 				URL:    URL(t, "https://api.example.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   `foo=bar&baz=qux`,
+				Body:   []byte(`foo=bar&baz=qux`),
 			},
 		},
 		{
@@ -426,7 +426,7 @@ func TestParseWithDataFile(t *testing.T) {
 				URL:    URL(t, "https://api.example.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   `binary content here`,
+				Body:   []byte(`binary content here`),
 			},
 		},
 		{
@@ -439,7 +439,7 @@ func TestParseWithDataFile(t *testing.T) {
 				URL:    URL(t, "https://api.example.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   `{"message":"hello"}`,
+				Body:   []byte(`{"message":"hello"}`),
 			},
 		},
 		{
@@ -452,7 +452,7 @@ func TestParseWithDataFile(t *testing.T) {
 				URL:    URL(t, "https://api.example.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   `test data`,
+				Body:   []byte(`test data`),
 			},
 		},
 		{
@@ -465,7 +465,7 @@ func TestParseWithDataFile(t *testing.T) {
 				URL:    URL(t, "https://api.example.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   `inline content`,
+				Body:   []byte(`inline content`),
 			},
 		},
 		{
@@ -478,7 +478,7 @@ func TestParseWithDataFile(t *testing.T) {
 				URL:    URL(t, "https://api.example.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   `binary inline`,
+				Body:   []byte(`binary inline`),
 			},
 		},
 		{
@@ -491,7 +491,7 @@ func TestParseWithDataFile(t *testing.T) {
 				URL:    URL(t, "https://api.example.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   `ascii inline`,
+				Body:   []byte(`ascii inline`),
 			},
 		},
 		{
@@ -508,7 +508,7 @@ func TestParseWithDataFile(t *testing.T) {
 				URL:    URL(t, "https://api.example.com"),
 				Method: http.MethodPost,
 				Header: http.Header{},
-				Body:   string([]byte{0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD, 0x00, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F}),
+				Body:   []byte{0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD, 0x00, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F},
 			},
 		},
 	}
@@ -660,8 +660,8 @@ func TestParserWithWorkingDirectory(t *testing.T) {
 		}
 
 		dataFile := filepath.Join(subdir, "data.json")
-		content := `{"key":"value"}`
-		if err := os.WriteFile(dataFile, []byte(content), 0o600); err != nil {
+		content := []byte(`{"key":"value"}`)
+		if err := os.WriteFile(dataFile, content, 0o600); err != nil {
 			t.Fatalf("failed to write data file: %v", err)
 		}
 
@@ -695,8 +695,8 @@ func TestParserWithWorkingDirectory(t *testing.T) {
 		// Create file with absolute path
 		dir := t.TempDir()
 		dataFile := filepath.Join(dir, "data.json")
-		content := `{"absolute":"path"}`
-		if err := os.WriteFile(dataFile, []byte(content), 0o600); err != nil {
+		content := []byte(`{"absolute":"path"}`)
+		if err := os.WriteFile(dataFile, content, 0o600); err != nil {
 			t.Fatalf("failed to write data file: %v", err)
 		}
 
@@ -732,8 +732,8 @@ func TestParserWithWorkingDirectory(t *testing.T) {
 		// Create file in current directory
 		dir := t.TempDir()
 		dataFile := filepath.Join(dir, "data.json")
-		content := `{"default":"wd"}`
-		if err := os.WriteFile(dataFile, []byte(content), 0o600); err != nil {
+		content := []byte(`{"default":"wd"}`)
+		if err := os.WriteFile(dataFile, content, 0o600); err != nil {
 			t.Fatalf("failed to write data file: %v", err)
 		}
 
@@ -750,8 +750,8 @@ func TestParserWithWorkingDirectory(t *testing.T) {
 			t.Fatalf("Parse returned error: %v", err)
 		}
 
-		if got.Body != content {
-			t.Errorf("expected body %q, got %q", content, got.Body)
+		if diff := cmp.Diff(content, got.Body); diff != "" {
+			t.Errorf("unexpected body (-want +got):\n%s", diff)
 		}
 	})
 
@@ -784,7 +784,7 @@ func TestParserWithWorkingDirectory(t *testing.T) {
 			URL:    URL(t, "https://api.example.com"),
 			Method: http.MethodPost,
 			Header: http.Header{},
-			Body:   "data1&data2",
+			Body:   []byte("data1&data2"),
 		}
 
 		if diff := cmp.Diff(want, got); diff != "" {
