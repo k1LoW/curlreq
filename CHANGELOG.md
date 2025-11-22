@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.4.0](https://github.com/k1LoW/curlreq/compare/v0.3.3...v0.4.0) - 2025-11-22
+- chore: setup tagpr labels by @k1LoW in https://github.com/k1LoW/curlreq/pull/14
+- feat: support `@file` by @k1LoW in https://github.com/k1LoW/curlreq/pull/16
+- fix: update `Body` field to use `[]byte` instead of `string` by @k1LoW in https://github.com/k1LoW/curlreq/pull/17
+- feat: add support for `--data-urlencode` in curl command parsing by @k1LoW in https://github.com/k1LoW/curlreq/pull/18
+
 ## [v0.3.3](https://github.com/k1LoW/curlreq/compare/v0.3.2...v0.3.3) - 2024-02-16
 - Allow no space after ':' in request headers by @kawabatas in https://github.com/k1LoW/curlreq/pull/12
 
