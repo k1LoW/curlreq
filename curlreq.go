@@ -1,6 +1,7 @@
 package curlreq
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -30,7 +31,7 @@ type Parsed struct {
 	URL    *url.URL
 	Method string
 	Header http.Header
-	Body   string
+	Body   []byte
 }
 
 type config struct {
@@ -112,9 +113,10 @@ func (p *Parser) Parse(cmd ...string) (*Parsed, error) {
 				}
 
 				if len(out.Body) == 0 {
-					out.Body = a
+					out.Body = []byte(a)
 				} else {
-					out.Body = out.Body + "&" + a
+					out.Body = append(out.Body, '&')
+					out.Body = append(out.Body, []byte(a)...)
 				}
 
 				state = stateBlank
@@ -178,10 +180,10 @@ func (p *Parsed) Request() (*http.Request, error) {
 	if p.URL == nil {
 		return nil, fmt.Errorf("curlreq: invalid URL: %s", p.URL)
 	}
-	if p.Body == "" {
+	if len(p.Body) == 0 {
 		b = http.NoBody
 	} else {
-		b = strings.NewReader(p.Body)
+		b = bytes.NewReader(p.Body)
 	}
 	req, err := http.NewRequest(p.Method, p.URL.String(), b)
 	if err != nil {
@@ -194,16 +196,17 @@ func (p *Parsed) Request() (*http.Request, error) {
 func (p *Parsed) MarshalJSON() ([]byte, error) {
 	// Check if Body contains valid UTF-8
 	bodyEncoding := ""
-	bodyValue := p.Body
+	bodyValue := ""
 
-	if p.Body != "" {
-		if !utf8.ValidString(p.Body) {
+	if len(p.Body) > 0 {
+		if !utf8.Valid(p.Body) {
 			// Body contains invalid UTF-8, encode as base64
 			bodyEncoding = "base64"
-			bodyValue = base64.StdEncoding.EncodeToString([]byte(p.Body))
+			bodyValue = base64.StdEncoding.EncodeToString(p.Body)
 		} else {
 			// Body contains valid UTF-8
 			bodyEncoding = "plain"
+			bodyValue = string(p.Body)
 		}
 	}
 
@@ -284,9 +287,9 @@ func expandCurlDataFiles(in []string, wd string) ([]string, error) {
 			step := 1
 			if content, err := readDataFile(value, wd); err != nil {
 				return nil, err
-			} else if content != "" {
+			} else if len(content) > 0 {
 				args[i] = opt
-				args = slices.Insert(args, i+1, content)
+				args = slices.Insert(args, i+1, string(content))
 				step = 2
 			}
 			i += step
@@ -299,8 +302,8 @@ func expandCurlDataFiles(in []string, wd string) ([]string, error) {
 
 		if content, err := readDataFile(args[i+1], wd); err != nil {
 			return nil, err
-		} else if content != "" {
-			args[i+1] = content
+		} else if len(content) > 0 {
+			args[i+1] = string(content)
 		}
 		i += 2
 	}
@@ -308,10 +311,10 @@ func expandCurlDataFiles(in []string, wd string) ([]string, error) {
 	return args, nil
 }
 
-// readDataFile reads the content of a file if the value starts with @, returns empty string otherwise.
-func readDataFile(value string, wd string) (string, error) {
+// readDataFile reads the content of a file if the value starts with @, returns nil otherwise.
+func readDataFile(value string, wd string) ([]byte, error) {
 	if !strings.HasPrefix(value, "@") || len(value) <= 1 {
-		return "", nil
+		return nil, nil
 	}
 	payloadPath := value[1:]
 
@@ -327,9 +330,9 @@ func readDataFile(value string, wd string) (string, error) {
 
 	b, err := os.ReadFile(fullPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read %s: %w", payloadPath, err)
+		return nil, fmt.Errorf("failed to read %s: %w", payloadPath, err)
 	}
-	return string(b), nil
+	return b, nil
 }
 
 func parseCurlDataArg(arg string) (option, value string, inline, ok bool) {
