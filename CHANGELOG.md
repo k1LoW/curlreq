@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.4.1](https://github.com/k1LoW/curlreq/compare/v0.4.0...v0.4.1) - 2026-04-26
+- chore(deps): bump the dependencies group with 3 updates by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/20
+- chore(deps): bump github.com/google/go-cmp from 0.5.9 to 0.7.0 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/19
+- chore(deps): bump the dependencies group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/23
+- chore(deps): bump Songmu/tagpr from 1.10.0 to 1.11.0 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/24
+- chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/25
+- chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/26
+- chore(deps): bump Songmu/tagpr from 1.12.1 to 1.15.0 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/27
+- chore(deps): bump the dependencies group across 1 directory with 3 updates by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/30
+- chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/31
+- chore(deps): bump Songmu/tagpr from 1.18.1 to 1.18.2 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/32
+- chore(deps): bump Songmu/tagpr from 1.18.2 to 1.18.3 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/34
+- chore(deps): bump k1LoW/octocov-action from 1.5.0 to 1.5.1 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/35
+- chore(deps): bump github.com/mattn/go-shellwords from 1.0.12 to 1.0.13 in the dependencies group across 1 directory by @dependabot[bot] in https://github.com/k1LoW/curlreq/pull/33
+
 ## [v0.4.0](https://github.com/k1LoW/curlreq/compare/v0.3.3...v0.4.0) - 2025-11-22
 - chore: setup tagpr labels by @k1LoW in https://github.com/k1LoW/curlreq/pull/14
 - feat: support `@file` by @k1LoW in https://github.com/k1LoW/curlreq/pull/16
